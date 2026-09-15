@@ -1,0 +1,9 @@
+# system-view bundle patch: mounts the interactive system-diagram plugin
+# into a dsh profile. Server side serves the editor page and a save/load route
+# that persists the graph to <workspace>/<graphPath> (agent-readable JSON).
+# Install: dsh plugin --profile web add <path to this package>
+- insert:
+    - id: sysview
+      name: '@infmed/dsh-sysview'
+      config:
+        graphPath: ai_notes/diagrams/system_graph.json
