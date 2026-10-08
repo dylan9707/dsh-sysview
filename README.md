@@ -1,6 +1,6 @@
 <p align="right">简体中文</p>
 
-<h1 align="center">@infmed/dsh-sysview</h1>
+<h1 align="center">dsh-sysview</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/DeepSeek%20Harness-plugin-202724" alt="DeepSeek Harness plugin">

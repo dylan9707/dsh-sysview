@@ -1,6 +1,6 @@
-# DSH 插件开发踩坑记录（@infmed/dsh-sysview）
+# DSH 插件开发踩坑记录（dsh-sysview）
 
-> 本文是 `@infmed/dsh-sysview`（原名 `@infmed/dsh-system-view`）插件从「加载失败」到「能跑起来」的完整排查记录，
+> 本文是 `dsh-sysview`（原名 `dsh-system-view`）插件从「加载失败」到「能跑起来」的完整排查记录，
 > 供后续开发/排障的 agent 直接复用。核心结论：**DSH 插件是双面包**——服务端（Node host 面）
 > 和浏览器端（client 面）各有硬性格式要求，任何一面格式不对都会 fail-loud。
 
@@ -46,9 +46,9 @@ Error [ERR_MODULE_NOT_FOUND]
 
 ### 关键结论（背下来）
 
-- `@deepseek-ai/schemastery` → `dependencies`
-- `@deepseek-ai/cordis`、`@deepseek-ai/dsh-*` → `peerDependencies` + `devDependencies`
-- 主机实际版本（无 `-rc` 后缀）：`cordis@4.0.1`、`schemastery@3.18.1`、`cosmokit@1.8.2`、`dsh-tools@0.1.0-rc.6`。**peer 范围别乱写 `-rc.1`**。
+- `@deepseek-ai/schemastery`、`@deepseek-ai/cordis`、`@deepseek-ai/dsh-*` → 全部 `peerDependencies`（每项标 `peerDependenciesMeta.optional`）+ `devDependencies`，**不要放 `dependencies`**（桌面版主机会从 app.asar 提供这些包，放 `dependencies` 会双实例冲突）。
+- 桌面版（dsh 0.2.0-rc.2）主机实际版本：`cordis@4.0.4`、`schemastery@3.18.4`、`dsh-tools@0.2.0-rc.2`。
+- 旧 CLI（0.1.0-rc.6，`link:` 加载）才需要把 schemastery 放 `dependencies` + junction；桌面版不需要 junction。
 
 ---
 
@@ -57,9 +57,9 @@ Error [ERR_MODULE_NOT_FOUND]
 ### 报错
 
 ~~~
-failed to import loader entry sysview (@infmed/dsh-sysview):
-client-modules: bundle /plugins/@infmed/dsh-sysview/client.js?rev=...
-loaded without registering "@infmed/dsh-sysview" via __ModuleLoader__.load
+failed to import loader entry sysview (dsh-sysview):
+client-modules: bundle /plugins/dsh-sysview/client.js?rev=...
+loaded without registering "dsh-sysview" via __ModuleLoader__.load
 ~~~
 
 ### 根因
@@ -71,7 +71,7 @@ loaded without registering "@infmed/dsh-sysview" via __ModuleLoader__.load
 
 ~~~js
 window.__ModuleLoader__.load({
-  id: "@infmed/dsh-sysview",       // 必须逐字符等于包名
+  id: "dsh-sysview",       // 必须逐字符等于包名
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
@@ -97,7 +97,7 @@ window.__ModuleLoader__.load({
    ~~~ts
    outputOptions: {
      entryFileNames: 'client.js',
-     banner: 'window.__ModuleLoader__.load({ id: "@infmed/dsh-sysview", factory: (require) => {',
+     banner: 'window.__ModuleLoader__.load({ id: "dsh-sysview", factory: (require) => {',
      intro:  'var module = { exports: {} }; var exports = module.exports;',
      footer: 'return module.exports; } });',
    }
@@ -132,7 +132,7 @@ JSON 里重复 key「后者覆盖前者」→ 最终生效的 `exports` 只剩�
 { "./client": { "default": "./lib/client.js" } }
 ~~~
 
-把 `.`（服务端入口 `lib/index.js`）覆盖没了。服务端加载用 `import('@infmed/dsh-sysview')`，
+把 `.`（服务端入口 `lib/index.js`）覆盖没了。服务端加载用 `import('dsh-sysview')`，
 走 Node ESM 的 `exports` 解析，缺 `.` 会报 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
 
 ### 修复
@@ -176,7 +176,7 @@ JSON 里重复 key「后者覆盖前者」→ 最终生效的 `exports` 只剩�
 
 ~~~jsonc
 {
-  "name": "@infmed/dsh-sysview",
+  "name": "dsh-sysview",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -190,16 +190,20 @@ JSON 里重复 key「后者覆盖前者」→ 最终生效的 `exports` 只剩�
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "inject": [...], "platform": "web" }
   },
-  "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
-  },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": { "optional": true },
+    "@deepseek-ai/dsh-tools": { "optional": true },
+    "@deepseek-ai/schemastery": { "optional": true }
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.2"
   }
 }
 ~~~
@@ -209,7 +213,7 @@ JSON 里重复 key「后者覆盖前者」→ 最终生效的 `exports` 只剩�
 ~~~yaml
 - insert:
     - id: sysview
-      name: '@infmed/dsh-sysview'
+      name: 'dsh-sysview'
       config:
         graphPath: ai_notes/diagrams/system_graph.json
 ~~~
@@ -230,14 +234,14 @@ JSON 里重复 key「后者覆盖前者」→ 最终生效的 `exports` 只剩�
 ### 报错
 
 ~~~
-failed to import loader entry sysview (@infmed/dsh-sysview): Cannot find package '@infmed/dsh-sysview' imported from C:\Users\user\.dsh\profiles\web\
+failed to import loader entry sysview (dsh-sysview): Cannot find package 'dsh-sysview' imported from C:\Users\user\.dsh\profiles\web\
 Error [ERR_MODULE_NOT_FOUND]
 ~~~
 
 ### 根因
 
-profile 的 patch / bundles 里引用了插件（`sysview` 这个 entry、`name: '@infmed/dsh-sysview'`），
-但插件包**没真正装进 profile 的 node_modules**（`profile/node_modules/@infmed` 目录 ENOENT）。
+profile 的 patch / bundles 里引用了插件（`sysview` 这个 entry、`name: 'dsh-sysview'`），
+但插件包**没真正装进 profile 的 node_modules**（`profile/node_modules/dsh-sysview` 目录 ENOENT）。
 
 常见触发：改完插件后手动改了 profile 配置，或 `dsh plugin add` 中途 pnpm 失败（例如 peer 依赖解析不出来），
 导致 bundles 写了、包却没装上。
@@ -253,7 +257,7 @@ dsh plugin --profile web add D:\dsh-system-view
 装完验证：
 
 ~~~
-dsh --profile web --dump-config     # 应能看到 id: sysview / name: '@infmed/dsh-sysview'
+dsh --profile web --dump-config     # 应能看到 id: sysview / name: 'dsh-sysview'
 ~~~
 
 ### 排查技巧
@@ -317,7 +321,7 @@ node --input-type=module -e "import('./lib/index.js').then(m => console.log('OK:
 
 ### 注意
 
-- junction 是机器本地的。插件拷到**另一台机器**（InfMed 那台）时，同样的 junction 要重做（或那台机器上 `pnpm install` 补全）。
+- junction 是机器本地的。插件拷到**另一台机器**（目标机器）时，同样的 junction 要重做（或那台机器上 `pnpm install` 补全）。
 - `cosmokit`、`@standard-schema/spec` 都是 0 deps 的叶子包，junction 后自包含；`dsh-tools` 自己的依赖会从它真实所在目录（dsh 安装目录）解析，所以单个 junction 就够了。
 
 ---

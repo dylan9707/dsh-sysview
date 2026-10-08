@@ -5,36 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>System View · 全景 + 信号流</title>
 <style>
-  html,body{margin:0;height:100%;font-family:sans-serif;overflow:hidden;background:#eef0f3;}
-  #bar{height:44px;background:#1c3d5a;color:#fff;display:flex;align-items:center;gap:6px;padding:0 12px;font-size:13px;}
-  #bar button{background:#2f5f8a;border:none;color:#fff;padding:5px 10px;border-radius:4px;cursor:pointer;}
-  #bar button:hover{background:#3d78ac;}
-  .tab{cursor:pointer;padding:5px 12px;border-radius:4px;color:#cfe0f0;font-weight:bold;user-select:none;}
-  .tab.active{background:#2f5f8a;color:#fff;}
-  #bar .sep{width:1px;height:20px;background:#3a5a7a;}
+  html,body{margin:0;height:100%;font-family:'Segoe UI',system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;overflow:hidden;}
+  body[data-theme="dark"]{background:#0B1220;}
+  body[data-theme="light"]{background:#eef0f3;}
+  #bar{height:44px;background:#111a2e;color:#e6edf3;display:flex;align-items:center;gap:6px;padding:0 12px;font-size:13px;}
+  #bar button{background:#1f2c45;border:1px solid #2b3b5a;color:#dbe4f0;padding:5px 10px;border-radius:6px;cursor:pointer;}
+  #bar button:hover{background:#2b3b5a;}
+  .tab{cursor:pointer;padding:5px 12px;border-radius:6px;color:#8b98a9;font-weight:bold;user-select:none;}
+  .tab.active{background:#2563eb;color:#fff;}
+  #bar .sep{width:1px;height:20px;background:#2b3b5a;}
   #bar .sp{flex:1;}
-  #bar #hint{color:#cfe0f0;font-size:11px;}
-  #bar #zoomlabel{color:#cfe0f0;font-size:11px;min-width:40px;text-align:center;}
-  #inspector{display:none;color:#fff;font-size:12px;white-space:nowrap;}
-  #inspector select,#inspector input{font-size:12px;padding:2px 4px;color:#222;}
+  #bar #hint{color:#8b98a9;font-size:11px;}
+  #bar #zoomlabel{color:#8b98a9;font-size:11px;min-width:40px;text-align:center;}
+  #inspector{display:none;color:#e6edf3;font-size:12px;white-space:nowrap;}
+  #inspector select,#inspector input{font-size:12px;padding:2px 4px;color:#111;background:#fff;border:1px solid #2b3b5a;border-radius:4px;}
   #main{height:calc(100% - 44px);}
-  #canvas{width:100%;height:100%;background:#fff;cursor:grab;}
+  #canvas{width:100%;height:100%;cursor:grab;display:block;}
+  @keyframes flowDash{to{stroke-dashoffset:-24;}}
+  @keyframes nodeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 </style>
 </head>
-<body>
+<body data-theme="dark">
 <div id="bar">
   <span id="tab-pano" class="tab active" onclick="setTab('pano')">全景</span>
   <span id="tab-flow" class="tab" onclick="setTab('flow')">信号流</span>
   <span class="sep"></span>
   <button id="btnEdit" onclick="toggleEdit()">✏️ 编辑模式</button>
-  <span id="editHint" style="font-size:11px;color:#cfe0f0;"></span>
+  <span id="editHint" style="font-size:11px;color:#8b98a9;"></span>
   <span class="sep"></span>
   <button id="btnAdd" onclick="addNode()">+块</button>
   <button id="btnSave" onclick="saveGraph()">保存</button>
   <button id="btnLoad" onclick="loadGraph()">加载</button>
   <button id="btnCopy" onclick="copyJson()">复制</button>
   <button id="btnUpdate" onclick="updateAgent()" title="把当前图同步给 agent，出改动确认与设计 plan">Update Agent</button>
-  <span id="agentStatus" style="font-size:11px;color:#9fe8a0;"></span>
+  <span id="agentStatus" style="font-size:11px;color:#34d399;"></span>
+  <span class="sep"></span>
+  <button id="btnTheme" onclick="toggleTheme()" title="明暗主题切换">🌙 深色</button>
+  <button onclick="exportSVG()" title="导出矢量 SVG">导出 SVG</button>
+  <button onclick="exportPNG()" title="导出 2x 高清 PNG">导出 PNG</button>
+  <span class="sep"></span>
   <button onclick="zoomIn()">+</button>
   <button onclick="zoomOut()">-</button>
   <button onclick="fitView()">适应</button>
@@ -50,14 +59,7 @@
 </div>
 <div id="main">
   <svg id="canvas">
-    <defs>
-      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-        <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
-      </marker>
-      <marker id="arrowPano" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-        <path d="M0,0 L10,5 L0,10 z" fill="#8B93A7"/>
-      </marker>
-    </defs>
+    <defs id="defs"></defs>
     <g id="world">
       <g id="layer"></g>
     </g>
@@ -66,11 +68,65 @@
 
 <script>
 var NODE_TYPES = ['process','control','sensor','actuator','data-store','external'];
-var NODE_FILL = {process:'#eef4fb',control:'#f4ecfb',sensor:'#e6f7f7',actuator:'#fdeaea','data-store':'#eef7ee',external:'#f2f2f2'};
-var NODE_STROKE = {process:'#4a7fc1',control:'#8a5bb5',sensor:'#2b9a9a',actuator:'#c14a4a','data-store':'#5c9a5c',external:'#999'};
 var EDGE_TYPES = ['signal','control','data'];
-var EDGE_COLOR = {signal:'#8a5bb5',control:'#d98e3a',data:'#5c9a5c'};
 var editing = false;   // 默认只读；点「编辑模式」才可改图
+
+// ============ 语义色板（archify 风格：深/浅各一套主色，rgb 用于派生半透明） ============
+var PANO_COLORS = {
+  cyan:   { dark:'#22D3EE', light:'#0891B2', rgb:'34,211,238' },
+  green:  { dark:'#34D399', light:'#059669', rgb:'52,211,153' },
+  blue:   { dark:'#60A5FA', light:'#2563EB', rgb:'96,165,250' },
+  purple: { dark:'#A78BFA', light:'#7C3AED', rgb:'167,139,250' },
+  orange: { dark:'#FBBF24', light:'#D97706', rgb:'251,191,36' },
+  rose:   { dark:'#F472B6', light:'#DB2777', rgb:'244,114,182' },
+  red:    { dark:'#F87171', light:'#DC2626', rgb:'248,113,113' },
+  gray:   { dark:'#94A3B8', light:'#4B5563', rgb:'148,163,184' }
+};
+var theme = 'dark';
+var THEME = {
+  dark: {
+    canvasBg:'#0B1220', dot:'rgba(148,163,184,0.10)',
+    text:'#E6EDF3', muted:'#8B98A9',
+    cardTop:0.14, cardBottom:0.04, cardBorder:0.45,
+    regionTop:0.06, regionBottom:0.015, regionBorder:0.35,
+    centerTop:0.22, centerBottom:0.05, centerBorder:0.7,
+    glowAlpha:0.30, chipAlpha:0.16, chipBg:'rgba(255,255,255,0.10)',
+    edgeLabelStroke:'#0B1220'
+  },
+  light: {
+    canvasBg:'#FBFAF7', dot:'rgba(148,163,184,0.55)',
+    text:'#1F2430', muted:'#5B6472',
+    cardTop:0.12, cardBottom:0.03, cardBorder:0.35,
+    regionTop:0.05, regionBottom:0.012, regionBorder:0.28,
+    centerTop:0.16, centerBottom:0.03, centerBorder:0.6,
+    glowAlpha:0.14, chipAlpha:0.12, chipBg:'#F5EDEF',
+    edgeLabelStroke:'#FBFAF7'
+  }
+};
+
+// 信号流（G2）块类型色：深/浅各一套
+var SFLOW = {
+  dark: {
+    process:{fill:'#0f1a26',stroke:'#5b8fd4'},
+    control:{fill:'#180f28',stroke:'#a06bd8'},
+    sensor:{fill:'#0c2024',stroke:'#3fbfbf'},
+    actuator:{fill:'#241014',stroke:'#e06a6a'},
+    'data-store':{fill:'#0f200f',stroke:'#6fbf6f'},
+    external:{fill:'#141419',stroke:'#8a8a99'}
+  },
+  light: {
+    process:{fill:'#eef4fb',stroke:'#4a7fc1'},
+    control:{fill:'#f4ecfb',stroke:'#8a5bb5'},
+    sensor:{fill:'#e6f7f7',stroke:'#2b9a9a'},
+    actuator:{fill:'#fdeaea',stroke:'#c14a4a'},
+    'data-store':{fill:'#eef7ee',stroke:'#5c9a5c'},
+    external:{fill:'#f2f2f2',stroke:'#999'}
+  }
+};
+var EDGE_COLORS = {
+  dark:  { signal:'#a06bd8', control:'#f0a04b', data:'#6fbf6f' },
+  light: { signal:'#8a5bb5', control:'#d98e3a', data:'#5c9a5c' }
+};
 
 // 图 2：信号流块图（块=信号处理环节，边=流动的信号；safety 举例）
 var G2 = {
@@ -93,18 +149,7 @@ var G2 = {
   ]
 };
 
-// ============ 图 3：全景（白板手绘风，规格 #2） ============
-var PANO_COLORS = {
-  cyan:   { main:'#128C8C', bg:'#EAF5F4', border:'#BFE0DD' },
-  green:  { main:'#3E9B4F', bg:'#EEF6EC', border:'#C4E0C4' },
-  rose:   { main:'#C2508F', bg:'#FAEAF3', border:'#EBC6DE' },
-  red:    { main:'#C0453E', bg:'#FBEEEC', border:'#EFC9C4' },
-  blue:   { main:'#3E7FA6', bg:'#EAF2F7', border:'#C3DAE8' },
-  orange: { main:'#B07A28', bg:'#FAF3E3', border:'#E6D3A8' },
-  purple: { main:'#B0509B', bg:'#F9EAF5', border:'#E3BCD8' },
-  gray:   { main:'#8B93A7', bg:'#F1F0ED', border:'#D8D5CE' }
-};
-
+// ============ 图 3：全景（archify 风，规格 #2） ============
 var G3 = {
   nodes: [
     {id:'p-top', kind:'card', color:'purple', x:500, y:30, w:860, h:96,
@@ -146,6 +191,7 @@ var G3 = {
 
 var sel = null, seq = 100, drag = null, connect = null, pan = null, currentJson = '', tab = 'pano';
 var view = {x:0, y:0, scale:1};
+var entrance = false;
 var NS = 'http://www.w3.org/2000/svg';
 var canvas = document.getElementById('canvas');
 var world = document.getElementById('world');
@@ -153,6 +199,9 @@ var layer = document.getElementById('layer');
 
 function cur(){ return tab==='flow' ? G2 : G3; }
 function nodeById(id){ var g=cur(); for(var i=0;i<g.nodes.length;i++) if(g.nodes[i].id===id) return g.nodes[i]; return null; }
+function ckey(k){ return PANO_COLORS[k] ? k : 'gray'; }
+function mainColor(k){ var c=PANO_COLORS[k]||PANO_COLORS.gray; return theme==='dark' ? c.dark : c.light; }
+function rgba(k, a){ var c=PANO_COLORS[k]||PANO_COLORS.gray; return 'rgba('+c.rgb+','+a+')'; }
 // 子块坐标 = 相对父块左上角的偏移；pos() 给出画布实际位置（父块拖动时子块自动跟随）
 function pos(n){
   if(n && n.parent){
@@ -183,6 +232,12 @@ function edgeEndpoints(a, b){
   var p1 = borderPoint(a, dx, dy);
   var p2 = borderPoint(b, -dx, -dy);
   return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y };
+}
+// 平滑贝塞尔：两端水平切线（archify 曲线连线）
+function edgePath(a, b){
+  var ep = edgeEndpoints(a, b);
+  var mx = ep.x1 + (ep.x2 - ep.x1)/2;
+  return { d:'M'+ep.x1+' '+ep.y1+' C'+mx+' '+ep.y1+', '+mx+' '+ep.y2+', '+ep.x2+' '+ep.y2, mx:mx, my:(ep.y1+ep.y2)/2 };
 }
 // 文本宽度估算：CJK 全角≈字号，ASCII≈0.55×字号（够用即可，不必精确排版）
 function textWidth(s, size){
@@ -230,16 +285,38 @@ function el(name, attrs, text){
   if(text!==undefined) e.textContent = text;
   return e;
 }
-function setBg(t){
-  if(t==='pano'){
-    canvas.style.backgroundColor = '#FBFAF7';
-    canvas.style.backgroundImage = 'radial-gradient(circle, #D8D5CE 1.5px, transparent 1.5px)';
-    canvas.style.backgroundSize = '28px 28px';
-  } else {
-    canvas.style.backgroundColor = '#fff';
-    canvas.style.backgroundImage = 'none';
-    canvas.style.backgroundSize = '';
+function gradient(id, stops){
+  var g = el('linearGradient', {id:id, x1:'0', y1:'0', x2:'0', y2:'1'});
+  for(var i=0;i<stops.length;i++) g.appendChild(el('stop', {offset:stops[i][0], 'stop-color':stops[i][1]}));
+  return g;
+}
+// 每色渐变 + 箭头标记（按需）——theme 切换时重建
+var markerCache = {};
+function buildDefs(){
+  var defs = document.getElementById('defs');
+  defs.innerHTML = '';
+  markerCache = {};
+  var T = THEME[theme];
+  for(var k in PANO_COLORS){
+    defs.appendChild(gradient('grad-card-'+k,  [['0%', rgba(k, T.cardTop)],  ['100%', rgba(k, T.cardBottom)]]));
+    defs.appendChild(gradient('grad-region-'+k,[['0%', rgba(k, T.regionTop)],['100%', rgba(k, T.regionBottom)]]));
+    defs.appendChild(gradient('grad-center-'+k,[['0%', rgba(k, T.centerTop)],['100%', rgba(k, T.centerBottom)]]));
   }
+}
+function arrowMarker(color){
+  if(markerCache[color]) return markerCache[color];
+  var id = 'am' + Object.keys(markerCache).length;
+  markerCache[color] = id;
+  var m = el('marker', {id:id, viewBox:'0 0 10 10', refX:8.5, refY:5, markerWidth:6.5, markerHeight:6.5, orient:'auto'});
+  m.appendChild(el('path', {d:'M0,0 L10,5 L0,10 z', fill:color}));
+  document.getElementById('defs').appendChild(m);
+  return id;
+}
+function setBg(t){
+  var T = THEME[theme];
+  canvas.style.backgroundColor = T.canvasBg;
+  canvas.style.backgroundImage = 'radial-gradient(circle, '+T.dot+' 1.5px, transparent 1.5px)';
+  canvas.style.backgroundSize = '28px 28px';
 }
 function setTab(t){
   tab = t;
@@ -247,23 +324,35 @@ function setTab(t){
   document.getElementById('tab-pano').className = 'tab' + (t==='pano'?' active':'');
   sel = null;
   setBg(t);
+  entrance = true;
   render();
   fitView();
 }
+function setTheme(t){
+  theme = t;
+  document.body.dataset.theme = t;
+  document.getElementById('btnTheme').textContent = theme==='dark' ? '🌙 深色' : '☀️ 浅色';
+  buildDefs();
+  setBg(tab);
+  entrance = true;
+  render();
+  fitView();
+}
+function toggleTheme(){ setTheme(theme==='dark' ? 'light' : 'dark'); }
 
-// ---- 全景（白板）渲染 ----
-function panoColor(k){ return PANO_COLORS[k] || PANO_COLORS.gray; }
+// ---- 全景（archify 白板）渲染 ----
 function drawRichLine(x, y, text, size, color, codeColor){
   var parts = String(text).split('`');
   var cx = x;
   var mono = 'JetBrains Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  var T = THEME[theme];
   var t = el('text', {x:x, y:y, 'text-anchor':'start', 'font-size':size, fill:color});
   for(var i=0;i<parts.length;i++){
     var seg = parts[i];
     if(!seg) continue;
     if(i%2===1){
       var cw = textWidth(seg, size*0.92);
-      var cr = el('rect', {x:cx-2, y:y-size*0.78, width:cw+4, height:size*1.12, rx:3, fill:'#F5EDEF', stroke:'none'});
+      var cr = el('rect', {x:cx-2, y:y-size*0.78, width:cw+4, height:size*1.12, rx:3, fill:T.chipBg, stroke:'none'});
       layer.appendChild(cr);
       var ts = el('tspan', {'font-family':mono, 'font-size':size*0.92, fill:(codeColor||color)}, seg);
       t.appendChild(ts);
@@ -278,101 +367,119 @@ function drawRichLine(x, y, text, size, color, codeColor){
   return cx - x;
 }
 function panoHandle(n, c){
-  var hd = el('circle',{cx:n.x+n.w, cy:n.y+n.h/2, r:6, fill:c.main, stroke:'#fff','stroke-width':1.5});
+  var hd = el('circle',{cx:n.x+n.w, cy:n.y+n.h/2, r:6, fill:c, stroke:'#fff','stroke-width':1.5});
   hd.dataset.handle = n.id; hd.style.cursor='crosshair';
   layer.appendChild(hd);
 }
 function drawRegion(n){
-  var c = panoColor(n.color);
-  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:14,fill:c.bg,stroke:c.border,'stroke-width':1.5});
+  var k = ckey(n.color), c = mainColor(k), T = THEME[theme];
+  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:18,fill:'url(#grad-region-'+k+')',stroke:rgba(k,T.regionBorder),'stroke-width':1.5});
   bg.dataset.node = n.id; bg.style.cursor='move';
+  bg.style.filter = 'drop-shadow(0 8px 24px '+rgba(k,T.glowAlpha*0.7)+')';
   layer.appendChild(bg);
-  var label = n.title + (n.en ? '（'+n.en+'）' : '');
-  var tw = textWidth(label, 15);
-  var pillW = tw + 28, pillH = 28;
-  var pill = el('rect',{x:n.x+12, y:n.y-pillH/2, width:pillW, height:pillH, rx:pillH/2, fill:c.main});
+  var label = n.title + (n.en ? '  '+n.en : '');
+  var tw = textWidth(label, 13);
+  var pillW = tw + 24, pillH = 26;
+  var pill = el('rect',{x:n.x+14, y:n.y-pillH/2, width:pillW, height:pillH, rx:pillH/2, fill:c});
   pill.dataset.node = n.id; pill.style.cursor='move';
+  pill.style.filter = 'drop-shadow(0 4px 10px '+rgba(k,0.35)+')';
   layer.appendChild(pill);
-  var pt = el('text',{x:n.x+26, y:n.y+4, 'text-anchor':'start','font-size':15,'font-weight':'bold',fill:'#fff'}, label);
+  var pt = el('text',{x:n.x+26, y:n.y+4, 'text-anchor':'start','font-size':13,'font-weight':'bold',fill:(theme==='dark'?'#08111F':'#fff')}, label);
   pt.dataset.node = n.id; pt.style.cursor='move';
   layer.appendChild(pt);
   if(editing) panoHandle(n, c);
 }
 function drawCard(n){
-  var c = panoColor(n.color);
-  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:8,fill:'#FFFDFB',stroke:'#E3E0D9','stroke-width':1});
+  var k = ckey(n.color), c = mainColor(k), T = THEME[theme];
+  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:12,fill:'url(#grad-card-'+k+')',stroke:rgba(k,T.cardBorder),'stroke-width':1});
   bg.dataset.node = n.id; bg.style.cursor='move';
+  bg.style.filter = 'drop-shadow(0 6px 18px '+rgba(k,T.glowAlpha*0.6)+')';
   layer.appendChild(bg);
-  var t1 = el('text',{x:n.x+14,y:n.y+26,'text-anchor':'start','font-size':14,'font-weight':'bold',fill:c.main}, (n.title||''));
+  var t1 = el('text',{x:n.x+14,y:n.y+26,'text-anchor':'start','font-size':14,'font-weight':'bold',fill:c}, (n.title||''));
   t1.dataset.node = n.id; t1.style.cursor='move';
   layer.appendChild(t1);
   var by = n.y + 52;
   for(var i=0;i<(n.bullets||[]).length;i++){
-    if(n.bullets[i]) drawRichLine(n.x+14, by, n.bullets[i], 11, '#5B6472', c.main);
+    if(n.bullets[i]) drawRichLine(n.x+14, by, n.bullets[i], 11, T.muted, c);
     by += 18;
   }
   if(editing) panoHandle(n, c);
 }
 function drawCenter(n){
-  var c = panoColor(n.color);
-  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:14,fill:c.bg,stroke:c.border,'stroke-width':2});
+  var k = ckey(n.color), c = mainColor(k), T = THEME[theme];
+  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:16,fill:'url(#grad-center-'+k+')',stroke:rgba(k,T.centerBorder),'stroke-width':2});
   bg.dataset.node = n.id; bg.style.cursor='move';
+  bg.style.filter = 'drop-shadow(0 0 32px '+rgba(k,T.glowAlpha)+')';
   layer.appendChild(bg);
-  var t1 = el('text',{x:n.x+n.w/2,y:n.y+36,'text-anchor':'middle','font-size':20,'font-weight':'bold',fill:c.main}, (n.title||''));
+  var t1 = el('text',{x:n.x+n.w/2,y:n.y+38,'text-anchor':'middle','font-size':21,'font-weight':'bold',fill:c}, (n.title||''));
   t1.dataset.node = n.id; t1.style.cursor='move';
   layer.appendChild(t1);
   if(n.sub){
-    var t2 = el('text',{x:n.x+n.w/2,y:n.y+62,'text-anchor':'middle','font-size':13,fill:'#5B6472'}, n.sub);
+    var t2 = el('text',{x:n.x+n.w/2,y:n.y+64,'text-anchor':'middle','font-size':13,fill:T.muted}, n.sub);
     t2.dataset.node = n.id; t2.style.cursor='move';
     layer.appendChild(t2);
   }
-  var by = n.y + 92;
+  var by = n.y + 96;
   for(var i=0;i<(n.bullets||[]).length;i++){
-    if(n.bullets[i]) drawRichLine(n.x+24, by, n.bullets[i], 12, '#5B6472', c.main);
+    if(n.bullets[i]) drawRichLine(n.x+24, by, n.bullets[i], 12, T.muted, c);
     by += 20;
   }
   if(editing) panoHandle(n, c);
 }
 function drawDoc(n){
-  var ft = el('text',{x:n.x+2, y:n.y-8, 'text-anchor':'start','font-size':10, fill:'#8B93A7'}, (n.filename||''));
+  var T = THEME[theme];
+  var ft = el('text',{x:n.x+2, y:n.y-8, 'text-anchor':'start','font-size':10, fill:T.muted}, (n.filename||''));
   layer.appendChild(ft);
-  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:8,fill:'#F1F0ED',stroke:'#E3E0D9','stroke-width':1});
+  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:8,fill:(theme==='dark'?'#141d2e':'#F1F0ED'),stroke:(theme==='dark'?'#26324a':'#E3E0D9'),'stroke-width':1});
   bg.dataset.node = n.id; bg.style.cursor='move';
   layer.appendChild(bg);
-  var t1 = el('text',{x:n.x+14,y:n.y+24,'text-anchor':'start','font-size':13,'font-weight':'bold',fill:'#1F2430'}, (n.title||''));
+  var t1 = el('text',{x:n.x+14,y:n.y+24,'text-anchor':'start','font-size':13,'font-weight':'bold',fill:T.text}, (n.title||''));
   t1.dataset.node = n.id; t1.style.cursor='move';
   layer.appendChild(t1);
   var by = n.y + 48;
   if(n.sub){
-    var t2 = el('text',{x:n.x+14,y:by,'text-anchor':'start','font-size':12,'font-weight':'bold',fill:'#C0453E'}, n.sub);
+    var t2 = el('text',{x:n.x+14,y:by,'text-anchor':'start','font-size':12,'font-weight':'bold',fill:'#F87171'}, n.sub);
     t2.dataset.node = n.id; t2.style.cursor='move';
     layer.appendChild(t2);
     by += 20;
   }
   for(var i=0;i<(n.body||[]).length;i++){
     if(n.body[i]){
-      var bt = el('text',{x:n.x+14,y:by,'text-anchor':'start','font-size':10.5,fill:'#6B7280'}, n.body[i]);
+      var bt = el('text',{x:n.x+14,y:by,'text-anchor':'start','font-size':10.5,fill:T.muted}, n.body[i]);
       layer.appendChild(bt);
     }
     by += 16;
   }
-  if(editing) panoHandle(n, panoColor(n.color));
+  if(editing) panoHandle(n, panoHandleColor(n.color));
+}
+function panoHandleColor(k){ return mainColor(ckey(k)); }
+// 连线标签 chip（彩色圆角 pill）
+function edgeLabelChip(k, col, text, px, py){
+  var T = THEME[theme];
+  var tw = textWidth(text, 12);
+  var lw = tw + 16, lh = 20;
+  var lx = px - lw/2, ly = py - 26;
+  var chip = el('rect',{x:lx, y:ly, width:lw, height:lh, rx:lh/2, fill:rgba(k, T.chipAlpha), stroke:rgba(k, 0.5), 'stroke-width':1});
+  layer.appendChild(chip);
+  layer.appendChild(el('text',{x:px, y:ly+lh/2+4, 'text-anchor':'middle','font-size':12,'font-weight':'600',fill:col}, text));
 }
 function drawPanoEdge(e){
   var a = nodeById(e.from), b = nodeById(e.to);
   if(!a||!b) return;
-  var ep = edgeEndpoints(a, b);
-  var mx = ep.x1 + (ep.x2 - ep.x1)/2;
-  var d = 'M'+ep.x1+' '+ep.y1+' C'+mx+' '+ep.y1+', '+mx+' '+ep.y2+', '+ep.x2+' '+ep.y2;
-  var col = panoColor(e.color||'gray').main;
-  var path = el('path',{d:d, fill:'none', stroke:col, 'stroke-width':2.5, 'marker-end':'url(#arrowPano)'});
-  if(e.dash) path.setAttribute('stroke-dasharray','6,5');
-  path.dataset.edge = e.id; path.style.cursor='pointer';
-  layer.appendChild(path);
-  if(e.label){
-    var lt = el('text',{x:mx, y:(ep.y1+ep.y2)/2-8, 'text-anchor':'middle','font-size':16, fill:col, 'stroke':'#FBFAF7','stroke-width':4,'paint-order':'stroke'}, e.label);
-    layer.appendChild(lt);
+  var k = ckey(e.color||'gray'), col = mainColor(k);
+  var p = edgePath(a, b);
+  var base = el('path',{d:p.d, fill:'none', stroke:col, 'stroke-width':2, 'stroke-opacity':(e.dash?0.5:0.35), 'marker-end':'url(#'+arrowMarker(col)+')'});
+  if(e.dash) base.setAttribute('stroke-dasharray','5,6');
+  base.dataset.edge = e.id; base.style.cursor='pointer';
+  layer.appendChild(base);
+  if(!e.dash){
+    // 流动动画覆盖线：虚线沿路径行进，表方向
+    var flow = el('path',{d:p.d, fill:'none', stroke:col, 'stroke-width':3, 'stroke-linecap':'round', 'stroke-dasharray':'2 12'});
+    flow.style.animation = 'flowDash 0.9s linear infinite';
+    flow.setAttribute('pointer-events','none');
+    layer.appendChild(flow);
   }
+  if(e.label) edgeLabelChip(k, col, e.label, p.mx, p.my);
 }
 function renderPano(){
   var g = G3;
@@ -385,14 +492,34 @@ function renderPano(){
     else if(n.kind==='doc') docs.push(n);
     else cards.push(n);
   }
+  var doEnter = entrance; entrance = false;
   for(var j=0;j<regions.length;j++) drawRegion(regions[j]);
   for(var k=0;k<cards.length;k++) drawCard(cards[k]);
   for(var m=0;m<centers.length;m++) drawCenter(centers[m]);
   for(var d=0;d<docs.length;d++) drawDoc(docs[d]);
   for(var e=0;e<g.edges.length;e++) drawPanoEdge(g.edges[e]);
+  if(doEnter) animateNodes();
   updateToolbar();
   refreshJson();
   refreshInspector();
+}
+// 节点入场淡入（只在加载/切 tab/切主题时，拖拽重绘不触发）
+function animateNodes(){
+  var g = cur();
+  var all = layer.querySelectorAll('[data-node]');
+  var seen = {};
+  var idx = 0;
+  for(var i=0;i<all.length;i++){
+    var id = all[i].getAttribute('data-node');
+    if(!id || seen[id]) continue;
+    seen[id] = true;
+    // 只动画块的背景 rect（避免文字各自错位）
+    if(all[i].tagName === 'rect' || all[i].tagName === 'circle'){
+      all[i].style.animation = 'nodeIn 0.4s ease both';
+      all[i].style.animationDelay = (idx*40) + 'ms';
+      idx++;
+    }
+  }
 }
 
 function render(){
@@ -407,23 +534,29 @@ function render(){
     if(fy>fp.h) fp.h=Math.ceil(fy+6);
   }
   layer.innerHTML = '';
+  var doEnter = entrance; entrance = false;
+  var T = THEME[theme];
   var order = g.nodes.slice();
   order.sort(function(a,b){ return (a.parent?1:0)-(b.parent?1:0); });
   for(var j=0;j<order.length;j++){
     var n = order[j], pp = pos(n);
-    var fill = NODE_FILL[n.type]||'#eef4fb', stroke = (n.id===sel?'#d98e3a':(NODE_STROKE[n.type]||'#4a7fc1'));
+    var st = (SFLOW[theme][n.type]) || SFLOW[theme].process;
+    var fill = st.fill, stroke = (n.id===sel?'#FBBF24':st.stroke);
     var grp = el('g',{});
-    var r = el('rect',{x:pp.x,y:pp.y,width:pp.w,height:pp.h,rx:8,fill:fill,stroke:stroke,'stroke-width':(n.id===sel?3:1.6)});
+    var r = el('rect',{x:pp.x,y:pp.y,width:pp.w,height:pp.h,rx:10,fill:fill,stroke:stroke,'stroke-width':(n.id===sel?3:1.6)});
     r.dataset.node = n.id; r.style.cursor='move';
+    r.style.filter = 'drop-shadow(0 4px 12px '+rgba('gray', T.glowAlpha*0.5)+')';
+    var titleCol = theme==='dark' ? '#dbe4f0' : '#1c3d5a';
+    var subCol = theme==='dark' ? '#8894a6' : '#777';
     if(hasChildren(n.id)){
-      var t1 = el('text',{x:pp.x+12,y:pp.y+22,'text-anchor':'start','font-size':13,'font-weight':'bold',fill:'#1c3d5a'}, n.label);
+      var t1 = el('text',{x:pp.x+12,y:pp.y+22,'text-anchor':'start','font-size':13,'font-weight':'bold',fill:titleCol}, n.label);
       t1.dataset.node = n.id; t1.style.cursor='move';
-      var t2 = el('text',{x:pp.x+12,y:pp.y+38,'text-anchor':'start','font-size':10.5,fill:'#777'}, (n.sub||'')+' ['+n.type+']');
+      var t2 = el('text',{x:pp.x+12,y:pp.y+38,'text-anchor':'start','font-size':10.5,fill:subCol}, (n.sub||'')+' ['+n.type+']');
       t2.dataset.node = n.id; t2.style.cursor='move';
     } else {
-      var t1 = el('text',{x:cx(n),y:cy(n)-4,'text-anchor':'middle','font-size':15,'font-weight':'bold',fill:'#1c3d5a'}, n.label);
+      var t1 = el('text',{x:cx(n),y:cy(n)-4,'text-anchor':'middle','font-size':15,'font-weight':'bold',fill:titleCol}, n.label);
       t1.dataset.node = n.id; t1.style.cursor='move';
-      var t2 = el('text',{x:cx(n),y:cy(n)+18,'text-anchor':'middle','font-size':11,fill:'#777'}, (n.sub||'')+' ['+n.type+']');
+      var t2 = el('text',{x:cx(n),y:cy(n)+18,'text-anchor':'middle','font-size':11,fill:subCol}, (n.sub||'')+' ['+n.type+']');
       t2.dataset.node = n.id; t2.style.cursor='move';
     }
     grp.appendChild(r); grp.appendChild(t1); grp.appendChild(t2);
@@ -437,16 +570,21 @@ function render(){
   for(var i=0;i<g.edges.length;i++){
     var e = g.edges[i], a = nodeById(e.from), b = nodeById(e.to);
     if(!a||!b) continue;
-    var ep = edgeEndpoints(a, b);
-    var col = EDGE_COLOR[e.type] || '#555';
-    var ln = el('line',{x1:ep.x1,y1:ep.y1,x2:ep.x2,y2:ep.y2,stroke:col,'stroke-width':(e.id===sel?3:1.6),'marker-end':'url(#arrow)'});
-    ln.dataset.edge = e.id; ln.style.cursor='pointer';
-    layer.appendChild(ln);
+    var col = (EDGE_COLORS[theme][e.type]) || '#94A3B8';
+    var p = edgePath(a, b);
+    var base = el('path',{d:p.d, fill:'none', stroke:col, 'stroke-width':(e.id===sel?3:1.8), 'stroke-opacity':0.4, 'marker-end':'url(#'+arrowMarker(col)+')'});
+    base.dataset.edge = e.id; base.style.cursor='pointer';
+    layer.appendChild(base);
+    var flow = el('path',{d:p.d, fill:'none', stroke:col, 'stroke-width':2.5, 'stroke-linecap':'round', 'stroke-dasharray':'2 12'});
+    flow.style.animation = 'flowDash 0.9s linear infinite';
+    flow.setAttribute('pointer-events','none');
+    layer.appendChild(flow);
     if(e.label){
-      var t = el('text',{x:(ep.x1+ep.x2)/2,y:(ep.y1+ep.y2)/2-4,'text-anchor':'middle','font-size':11,fill:'#333','stroke':'#fff','stroke-width':3,'paint-order':'stroke'}, e.label);
-      layer.appendChild(t);
+      var keyColor = e.type==='signal'?'purple':(e.type==='control'?'orange':'green');
+      edgeLabelChip(keyColor, col, e.label, p.mx, p.my);
     }
   }
+  if(doEnter) animateNodes();
   updateToolbar();
   refreshJson();
   refreshInspector();
@@ -527,9 +665,10 @@ function loadGraph(){
     .then(function(o){
       if(o.signalFlow){ if(o.signalFlow.nodes)G2.nodes=o.signalFlow.nodes; if(o.signalFlow.edges)G2.edges=o.signalFlow.edges; }
       if(o.panorama){ if(o.panorama.nodes)G3.nodes=o.panorama.nodes; if(o.panorama.edges)G3.edges=o.panorama.edges; }
+      entrance = true;
       render();
     })
-    .catch(function(err){ alert('加载失败，显示默认示例：'+err.message); render(); fitView(); });
+    .catch(function(err){ alert('加载失败，显示默认示例：'+err.message); entrance = true; render(); fitView(); });
 }
 function toggleEdit(){ editing = !editing; sel = null; render(); }
 function setAgentStatus(t){
@@ -569,6 +708,73 @@ function renameSel(){
   if(lbl!==null){ n[key]=lbl; render(); }
 }
 
+// ============ 导出（SVG / 2x PNG） ============
+function diagramBBox(){
+  var g = cur();
+  if(!g.nodes.length) return {x:0,y:0,w:800,h:600};
+  var minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(var i=0;i<g.nodes.length;i++){ var n=g.nodes[i], p=pos(n); minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x+p.w); maxY=Math.max(maxY,p.y+p.h); }
+  var pad = 48;
+  return {x:minX-pad, y:minY-pad, w:(maxX-minX)+2*pad, h:(maxY-minY)+2*pad};
+}
+function svgString(){
+  var bb = diagramBBox();
+  var clone = canvas.cloneNode(true);
+  clone.removeAttribute('style');
+  clone.setAttribute('xmlns', NS);
+  clone.setAttribute('font-family', "'Segoe UI', system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif");
+  clone.setAttribute('width', bb.w);
+  clone.setAttribute('height', bb.h);
+  clone.setAttribute('viewBox', bb.x+' '+bb.y+' '+bb.w+' '+bb.h);
+  var worldEl = clone.querySelector('#world');
+  if(worldEl) worldEl.removeAttribute('transform');
+  var bg = document.createElementNS(NS, 'rect');
+  bg.setAttribute('x', bb.x); bg.setAttribute('y', bb.y); bg.setAttribute('width', bb.w); bg.setAttribute('height', bb.h);
+  bg.setAttribute('fill', THEME[theme].canvasBg);
+  clone.insertBefore(bg, clone.firstChild);
+  // 静态化导出：去掉流动/入场动画，避免导出首帧闪烁
+  var anim = clone.querySelectorAll('[style]');
+  for(var i=0;i<anim.length;i++){
+    var s = anim[i].getAttribute('style')||'';
+    if(s.indexOf('flowDash') !== -1 || s.indexOf('nodeIn') !== -1){
+      anim[i].style.animation = 'none';
+      anim[i].style.opacity = '1';
+      anim[i].style.animationDelay = '0ms';
+    }
+  }
+  return new XMLSerializer().serializeToString(clone);
+}
+function download(filename, blob){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+function exportSVG(){
+  var svg = svgString();
+  download('system-view.svg', new Blob([svg], {type:'image/svg+xml'}));
+}
+function exportPNG(){
+  var svg = svgString();
+  var bb = diagramBBox();
+  var url = URL.createObjectURL(new Blob([svg], {type:'image/svg+xml'}));
+  var img = new Image();
+  img.onload = function(){
+    var scale = 2;
+    var cvs = document.createElement('canvas');
+    cvs.width = Math.round(bb.w*scale); cvs.height = Math.round(bb.h*scale);
+    var ctx2 = cvs.getContext('2d');
+    ctx2.fillStyle = THEME[theme].canvasBg;
+    ctx2.fillRect(0,0,cvs.width,cvs.height);
+    ctx2.drawImage(img, 0, 0, cvs.width, cvs.height);
+    URL.revokeObjectURL(url);
+    cvs.toBlob(function(b){ if(b) download('system-view.png', b); else alert('PNG 导出失败'); }, 'image/png');
+  };
+  img.onerror = function(){ alert('PNG 导出失败'); URL.revokeObjectURL(url); };
+  img.src = url;
+}
+
 canvas.addEventListener('mousedown', function(ev){
   var h = ev.target.closest ? ev.target.closest('[data-handle]') : null;
   if(h && editing){ connect={from:h.getAttribute('data-handle')}; ev.preventDefault(); return; }
@@ -587,15 +793,10 @@ window.addEventListener('mousemove', function(ev){
     render();
     var w2 = toWorld(ev.clientX, ev.clientY);
     var from = nodeById(connect.from), fp = pos(from);
-    if(tab==='pano'){
-      var fcx = fp.x+fp.w/2, fcy = fp.y+fp.h/2;
-      var bp2 = borderPoint(from, w2.x-fcx, w2.y-fcy);
-      var mx = bp2.x + (w2.x-bp2.x)/2;
-      layer.appendChild(el('path',{d:'M'+bp2.x+' '+bp2.y+' C'+mx+' '+bp2.y+', '+mx+' '+w2.y+', '+w2.x+' '+w2.y, fill:'none', stroke:'#B0509B','stroke-width':2,'stroke-dasharray':'5,3'}));
-    } else {
-      var bp = borderPoint(from, w2.x-(fp.x+fp.w/2), w2.y-(fp.y+fp.h/2));
-      layer.appendChild(el('line',{x1:bp.x,y1:bp.y,x2:w2.x,y2:w2.y,stroke:'#d98e3a','stroke-width':2,'stroke-dasharray':'5,3'}));
-    }
+    var fcx = fp.x+fp.w/2, fcy = fp.y+fp.h/2;
+    var bp2 = borderPoint(from, w2.x-fcx, w2.y-fcy);
+    var mx = bp2.x + (w2.x-bp2.x)/2;
+    layer.appendChild(el('path',{d:'M'+bp2.x+' '+bp2.y+' C'+mx+' '+bp2.y+', '+mx+' '+w2.y+', '+w2.x+' '+w2.y, fill:'none', stroke:'#E879F9','stroke-width':2.5,'stroke-dasharray':'6,4'}));
   }
 });
 window.addEventListener('mouseup', function(ev){
@@ -617,6 +818,9 @@ canvas.addEventListener('dblclick', function(ev){
   if(nd && editing){ sel=nd.getAttribute('data-node'); renameSel(); }
 });
 
+buildDefs();
+setBg('pano');
+entrance = true;
 loadGraph();   // 启动自动加载服务器上已保存的图；失败时 catch 内回退默认示例
 </script>
 </body>

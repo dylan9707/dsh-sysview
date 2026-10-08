@@ -4,6 +4,6 @@
 # Install: dsh plugin --profile web add <path to this package>
 - insert:
     - id: sysview
-      name: '@infmed/dsh-sysview'
+      name: 'dsh-sysview'
       config:
         graphPath: ai_notes/diagrams/system_graph.json
