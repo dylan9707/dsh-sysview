@@ -603,7 +603,6 @@ function refreshJson(){
   currentJson = JSON.stringify({version:2, signalFlow:G2, panorama:G3}, null, 2);
 }
 function refreshInspector(){
-  if(tab==='pano'){ document.getElementById('inspector').style.display='none'; return; }
   if(!editing){ document.getElementById('inspector').style.display='none'; return; }
   var ins = document.getElementById('inspector');
   var selType = document.getElementById('typeSel'), selLabel = document.getElementById('labelInp');
@@ -613,18 +612,34 @@ function refreshInspector(){
     ins.style.display='inline';
     selType.disabled = false;
     selType.innerHTML='';
-    for(var i=0;i<NODE_TYPES.length;i++){ var o=document.createElement('option'); o.value=NODE_TYPES[i]; o.text=NODE_TYPES[i]; if(n.type===NODE_TYPES[i])o.selected=true; selType.appendChild(o); }
-    selType.onchange = function(){ n.type = selType.value; render(); };
-    selLabel.value = n.label;
-    selLabel.oninput = function(){ n.label = selLabel.value; render(); };
+    if(tab==='pano'){
+      var KINDS=['card','region','center','doc'];
+      for(var i=0;i<KINDS.length;i++){ var o=document.createElement('option'); o.value=KINDS[i]; o.text=KINDS[i]; if(n.kind===KINDS[i])o.selected=true; selType.appendChild(o); }
+      selType.onchange = function(){ n.kind = selType.value; render(); };
+      selLabel.value = n.title || '';
+      selLabel.oninput = function(){ n.title = selLabel.value; render(); };
+    } else {
+      for(var j=0;j<NODE_TYPES.length;j++){ var o2=document.createElement('option'); o2.value=NODE_TYPES[j]; o2.text=NODE_TYPES[j]; if(n.type===NODE_TYPES[j])o2.selected=true; selType.appendChild(o2); }
+      selType.onchange = function(){ n.type = selType.value; render(); };
+      selLabel.value = n.label;
+      selLabel.oninput = function(){ n.label = selLabel.value; render(); };
+    }
   } else if(e){
     ins.style.display='inline';
     selType.disabled = false;
     selType.innerHTML='';
-    for(var j=0;j<EDGE_TYPES.length;j++){ var q=document.createElement('option'); q.value=EDGE_TYPES[j]; q.text=EDGE_TYPES[j]; if(e.type===EDGE_TYPES[j])q.selected=true; selType.appendChild(q); }
-    selType.onchange = function(){ e.type = selType.value; render(); };
-    selLabel.value = e.label;
-    selLabel.oninput = function(){ e.label = selLabel.value; render(); };
+    if(tab==='pano'){
+      var COLORS=Object.keys(PANO_COLORS);
+      for(var k=0;k<COLORS.length;k++){ var oc=document.createElement('option'); oc.value=COLORS[k]; oc.text=COLORS[k]; if(e.color===COLORS[k])oc.selected=true; selType.appendChild(oc); }
+      selType.onchange = function(){ e.color = selType.value; render(); };
+      selLabel.value = e.label || '';
+      selLabel.oninput = function(){ e.label = selLabel.value; render(); };
+    } else {
+      for(var m=0;m<EDGE_TYPES.length;m++){ var q=document.createElement('option'); q.value=EDGE_TYPES[m]; q.text=EDGE_TYPES[m]; if(e.type===EDGE_TYPES[m])q.selected=true; selType.appendChild(q); }
+      selType.onchange = function(){ e.type = selType.value; render(); };
+      selLabel.value = e.label;
+      selLabel.oninput = function(){ e.label = selLabel.value; render(); };
+    }
   } else {
     ins.style.display='none';
     selType.disabled = false;
@@ -816,6 +831,11 @@ canvas.addEventListener('wheel', function(ev){
 canvas.addEventListener('dblclick', function(ev){
   var nd = ev.target.closest ? ev.target.closest('[data-node]') : null;
   if(nd && editing){ sel=nd.getAttribute('data-node'); renameSel(); }
+});
+window.addEventListener('keydown', function(ev){
+  if(!editing || !sel) return;
+  if(ev.target && (ev.target.tagName==='INPUT' || ev.target.tagName==='SELECT' || ev.target.tagName==='TEXTAREA')) return;
+  if(ev.key==='Delete' || ev.key==='Backspace'){ ev.preventDefault(); delSel(); }
 });
 
 buildDefs();
