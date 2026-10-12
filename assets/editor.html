@@ -367,7 +367,8 @@ function drawRichLine(x, y, text, size, color, codeColor){
   return cx - x;
 }
 function panoHandle(n, c){
-  var hd = el('circle',{cx:n.x+n.w, cy:n.y+n.h/2, r:6, fill:c, stroke:'#fff','stroke-width':1.5});
+  var p = pos(n);
+  var hd = el('circle',{cx:p.x+n.w, cy:p.y+n.h/2, r:6, fill:c, stroke:'#fff','stroke-width':1.5});
   hd.dataset.handle = n.id; hd.style.cursor='crosshair';
   layer.appendChild(hd);
 }
@@ -391,16 +392,17 @@ function drawRegion(n){
 }
 function drawCard(n){
   var k = ckey(n.color), c = mainColor(k), T = THEME[theme];
-  var bg = el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:12,fill:'url(#grad-card-'+k+')',stroke:rgba(k,T.cardBorder),'stroke-width':1});
+  var p = pos(n);
+  var bg = el('rect',{x:p.x,y:p.y,width:n.w,height:n.h,rx:12,fill:'url(#grad-card-'+k+')',stroke:rgba(k,T.cardBorder),'stroke-width':1});
   bg.dataset.node = n.id; bg.style.cursor='move';
   bg.style.filter = 'drop-shadow(0 6px 18px '+rgba(k,T.glowAlpha*0.6)+')';
   layer.appendChild(bg);
-  var t1 = el('text',{x:n.x+14,y:n.y+26,'text-anchor':'start','font-size':14,'font-weight':'bold',fill:c}, (n.title||''));
+  var t1 = el('text',{x:p.x+14,y:p.y+26,'text-anchor':'start','font-size':14,'font-weight':'bold',fill:c}, (n.title||''));
   t1.dataset.node = n.id; t1.style.cursor='move';
   layer.appendChild(t1);
-  var by = n.y + 52;
+  var by = p.y + 52;
   for(var i=0;i<(n.bullets||[]).length;i++){
-    if(n.bullets[i]) drawRichLine(n.x+14, by, n.bullets[i], 11, T.muted, c);
+    if(n.bullets[i]) drawRichLine(p.x+14, by, n.bullets[i], 11, T.muted, c);
     by += 18;
   }
   if(editing) panoHandle(n, c);
@@ -682,6 +684,7 @@ function loadGraph(){
       if(o.panorama){ if(o.panorama.nodes)G3.nodes=o.panorama.nodes; if(o.panorama.edges)G3.edges=o.panorama.edges; }
       entrance = true;
       render();
+      fitView();
     })
     .catch(function(err){ alert('加载失败，显示默认示例：'+err.message); entrance = true; render(); fitView(); });
 }
