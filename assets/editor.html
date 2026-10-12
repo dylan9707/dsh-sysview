@@ -48,7 +48,6 @@
   <button onclick="zoomOut()">-</button>
   <button onclick="fitView()">适应</button>
   <span id="zoomlabel">100%</span>
-  <button onclick="closePanel()">关闭</button>
   <span class="sp"></span>
   <span id="hint">滚轮缩放 · 拖空白平移 · 拖块移动 · 右圆点连线 · 双击改名</span>
   <span id="inspector">
@@ -716,8 +715,6 @@ function copyJson(){
   refreshJson();
   var t=document.createElement('textarea'); t.value=currentJson; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('已复制 JSON');
 }
-function closePanel(){ if(parent!==window) parent.postMessage('system-view:close','*'); }
-
 function renameSel(){
   var n = nodeById(sel);
   if(!n) return;
